@@ -4,6 +4,8 @@ Name: Muhammad Mazaya
 
 Andrew ID: mmazaya
 
+Github URL: https://github.com/MSMazaya/17648-project
+
 ---
 
 ## Usage
@@ -12,7 +14,7 @@ Andrew ID: mmazaya
 
 To use it in a terminal-style interaction:
 
-    ./run.sh
+    ./entrypoint.sh
 
 This launches the container and allows direct input via stdin:
 
