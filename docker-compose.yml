@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  vapi:
+    build:
+      context: ./vapi
+    container_name: vapi
+    environment:
+      VAPI_PORT: 9000
+    ports:
+      - "9000:9000"           
+    networks:
+      - vapi_net
+    restart: unless-stopped
+    dns:
+      - 128.2.1.10
+      - 128.2.1.11
+
+  gateway:
+    build:
+      context: ./gateway
+    container_name: gateway
+    environment:
+      VAPI_HOST: vapi         
+      VAPI_PORT: 9000         
+    depends_on:
+      - vapi
+    networks:
+      - vapi_net
+    entrypoint: ./gateway     
+    dns:
+      - 128.2.1.10
+      - 128.2.1.11
+networks:
+  vapi_net:
+    driver: bridge

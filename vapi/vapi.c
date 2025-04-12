@@ -5,8 +5,68 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/select.h>
 
 #define SERIAL_LINE_BUF 128
+#define SERIAL_LINE_BUF 128
+#define TCP_BUF_SIZE 512
+
+int gateway_fd = -1;
+
+// ================== Serial TCP/IP Layer  ===================
+// Utility functions for TCP/IP communication using socket API
+
+int get_vapi_port() {
+    const char *env = getenv("VAPI_PORT");
+    return env ? atoi(env) : 9000;
+}
+
+void init_tcp_server() {
+    int server_fd;
+    struct sockaddr_in address;
+    socklen_t addrlen = sizeof(address);
+    int port = get_vapi_port();
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) { perror("socket failed"); exit(1); }
+
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(port);
+
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        perror("bind failed");
+        exit(1);
+    }
+
+    listen(server_fd, 1);
+    printf("Vehicle API TCP server listening on port %d...\n", port);
+
+    gateway_fd = accept(server_fd, (struct sockaddr*)&address, &addrlen);
+    if (gateway_fd < 0) {
+        perror("accept failed");
+        exit(1);
+    }
+
+    printf("Gateway connected.\n");
+}
+
+void tcp_send(const char *msg) {
+    if (gateway_fd != -1) {
+        send(gateway_fd, msg, strlen(msg), 0);
+    }
+}
+
+void tcp_send_line(const char *msg) {
+    char buf[TCP_BUF_SIZE];
+    snprintf(buf, sizeof(buf), "%s\n", msg);
+    tcp_send(buf);
+}
 
 // ================== Serial I/O Layer ===================
 // This is purposefully being named like a serial interface communication.
@@ -93,69 +153,33 @@ void print_json(const VehicleData *d) {
     serial_print(out);
 }
 
-void print_field(const VehicleData *d, const char *field) {
-    char out[128];
-
-    if (strcmp(field, "oil_temp") == 0)
-        snprintf(out, sizeof(out), "%d\n", d->oil_temp_f);
-    else if (strcmp(field, "maf_raw") == 0)
-        snprintf(out, sizeof(out), "%u\n", d->maf_raw);
-    else if (strcmp(field, "maf_cfm") == 0)
-        snprintf(out, sizeof(out), "%.2f\n", d->maf_raw * (2500.0 / 2047.0));
-    else if (strcmp(field, "battery_voltage") == 0)
-        snprintf(out, sizeof(out), "%u\n", d->battery_voltage);
-    else if (strcmp(field, "tire_pressure_raw") == 0)
-        snprintf(out, sizeof(out), "%u\n", d->tire_pressure_raw);
-    else if (strcmp(field, "tire_pressure_psi") == 0)
-        snprintf(out, sizeof(out), "%.2f\n", d->tire_pressure_raw * (100.0 / 2047.0));
-    else if (strcmp(field, "fuel_level_liters") == 0)
-        snprintf(out, sizeof(out), "%u\n", d->fuel_level_liters);
-    else if (strcmp(field, "fuel_consumption_rate") == 0)
-        snprintf(out, sizeof(out), "%u\n", d->fuel_consumption_rate);
-    else if (strcmp(field, "error_codes") == 0)
-        snprintf(out, sizeof(out), "0x%08X\n", d->error_codes);
-    else
-        snprintf(out, sizeof(out), "ERROR: Unknown field '%s'\n", field);
-
-    serial_print(out);
+void send_json(const VehicleData *d) {
+    char out[TCP_BUF_SIZE];
+    snprintf(out, sizeof(out),
+        "{\"oil_temp_f\": %d, \"maf_raw\": %u, \"maf_cfm\": %.2f, "
+        "\"battery_voltage\": %u, \"tire_pressure_raw\": %u, \"tire_pressure_psi\": %.2f, "
+        "\"fuel_level_liters\": %u, \"fuel_consumption_rate\": %u, \"error_codes\": \"0x%08X\"}\n",
+        d->oil_temp_f,
+        d->maf_raw, d->maf_raw * (2500.0 / 2047.0),
+        d->battery_voltage,
+        d->tire_pressure_raw, d->tire_pressure_raw * (100.0 / 2047.0),
+        d->fuel_level_liters,
+        d->fuel_consumption_rate,
+        d->error_codes
+    );
+    tcp_send(out);
 }
 
 int main() {
     srand(time(NULL));
-    char line[SERIAL_LINE_BUF];
-    int pushing = 0;
-    VehicleData latest = generate_data();
+    init_tcp_server();
 
-    while (serial_read_line(line, sizeof(line))) {
-        if (strncmp(line, "GET", 3) == 0) {
-            char *arg = line + 4;
-            if (strcmp(arg, "ALL") == 0) {
-                latest = generate_data();
-                print_json(&latest);
-            } else {
-                print_field(&latest, arg);
-            }
-
-        } else if (strncmp(line, "START PUSH", 10) == 0) {
-            pushing = 1;
-            while (pushing) {
-                latest = generate_data();
-                print_json(&latest);
-                sleep(2);
-
-                if (serial_input_available()) {
-                    if (serial_read_line(line, sizeof(line))) {
-                        if (strncmp(line, "STOP", 4) == 0)
-                            pushing = 0;
-                    }
-                }
-            }
-
-        } else if (strncmp(line, "STOP", 4) == 0) {
-            pushing = 0;
-        } else {
-            serial_print_line("UNKNOWN COMMAND");
-        }
+    while (1) {
+        VehicleData data = generate_data();
+        send_json(&data);
+        sleep(2);
     }
+
+    close(gateway_fd);
     return 0;
 }
