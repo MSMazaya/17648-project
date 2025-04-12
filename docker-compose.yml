@@ -12,9 +12,6 @@ services:
     networks:
       - vapi_net
     restart: unless-stopped
-    dns:
-      - 128.2.1.10
-      - 128.2.1.11
 
   gateway:
     build:
@@ -28,9 +25,9 @@ services:
     networks:
       - vapi_net
     entrypoint: ./gateway     
-    dns:
-      - 128.2.1.10
-      - 128.2.1.11
+    tty: true
+    stdin_open: true
+
 networks:
   vapi_net:
     driver: bridge
