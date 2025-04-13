@@ -4,70 +4,60 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <netdb.h>
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 
 #define SERIAL_LINE_BUF 128
-#define SERIAL_LINE_BUF 128
+#define TCP_BUF_SIZE 512
+#define DEFAULT_GATEWAY_HOST "gateway"
+#define DEFAULT_GATEWAY_PORT 9010
 #define TCP_BUF_SIZE 512
 
 int gateway_fd = -1;
 
+// ================== Utility Functions  =====================
+const char* get_env_or_default(const char* var, const char* def) {
+    const char* val = getenv(var);
+    return val ? val : def;
+}
+
 // ================== Serial TCP/IP Layer  ===================
 // Utility functions for TCP/IP communication using socket API
 
-int get_vapi_port() {
-    const char *env = getenv("VAPI_PORT");
-    return env ? atoi(env) : 9000;
-}
+int connect_to_gateway(const char* host, int port) {
+    struct sockaddr_in server_addr;
+    struct hostent* gateway_host;
 
-void init_tcp_server() {
-    int server_fd;
-    struct sockaddr_in address;
-    socklen_t addrlen = sizeof(address);
-    int port = get_vapi_port();
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) { perror("socket failed"); exit(1); }
 
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) { perror("socket failed"); exit(1); }
-
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
-
-    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        perror("bind failed");
+    gateway_host = gethostbyname(host);
+    if (!gateway_host) {
+        fprintf(stderr, "Failed to resolve gateway host: %s\n", host);
         exit(1);
     }
 
-    listen(server_fd, 1);
-    printf("Vehicle API TCP server listening on port %d...\n", port);
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    memcpy(&server_addr.sin_addr, gateway_host->h_addr, gateway_host->h_length);
+    server_addr.sin_port = htons(port);
 
-    gateway_fd = accept(server_fd, (struct sockaddr*)&address, &addrlen);
-    if (gateway_fd < 0) {
-        perror("accept failed");
+    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection to gateway failed");
         exit(1);
     }
 
-    printf("Gateway connected.\n");
+    return sockfd;
 }
 
-void tcp_send(const char *msg) {
-    if (gateway_fd != -1) {
-        send(gateway_fd, msg, strlen(msg), 0);
-    }
+void send_vehicle_id(int sockfd, const char* id) {
+    char msg[128];
+    snprintf(msg, sizeof(msg), "vehicle_id: %s\n", id);
+    send(sockfd, msg, strlen(msg), 0);
 }
-
-void tcp_send_line(const char *msg) {
-    char buf[TCP_BUF_SIZE];
-    snprintf(buf, sizeof(buf), "%s\n", msg);
-    tcp_send(buf);
-}
-
 // ================== Serial I/O Layer ===================
 // This is purposefully being named like a serial interface communication.
 // The idea is to provide extensability so that if I need to change this
@@ -153,7 +143,7 @@ void print_json(const VehicleData *d) {
     serial_print(out);
 }
 
-void send_json(const VehicleData *d) {
+void send_json_data(int sockfd, const VehicleData* d) {
     char out[TCP_BUF_SIZE];
     snprintf(out, sizeof(out),
         "{\"oil_temp_f\": %d, \"maf_raw\": %u, \"maf_cfm\": %.2f, "
@@ -167,19 +157,25 @@ void send_json(const VehicleData *d) {
         d->fuel_consumption_rate,
         d->error_codes
     );
-    tcp_send(out);
+    send(sockfd, out, strlen(out), 0);
 }
 
 int main() {
     srand(time(NULL));
-    init_tcp_server();
+
+    const char* vehicle_id = get_env_or_default("VEHICLE_ID", "default_vehicle");
+    const char* host = get_env_or_default("GATEWAY_HOST", DEFAULT_GATEWAY_HOST);
+    int port = atoi(get_env_or_default("GATEWAY_PORT", "9010"));
+
+    int sockfd = connect_to_gateway(host, port);
+    send_vehicle_id(sockfd, vehicle_id);
 
     while (1) {
-        VehicleData data = generate_data();
-        send_json(&data);
+        VehicleData d = generate_data();
+        send_json_data(sockfd, &d);
         sleep(2);
     }
 
-    close(gateway_fd);
+    close(sockfd);
     return 0;
 }
