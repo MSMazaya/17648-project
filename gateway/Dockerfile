@@ -1,10 +1,6 @@
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y build-essential
+FROM python:3.10-slim
 
 WORKDIR /app
-COPY gateway.c .
+COPY gateway.py .
 
-RUN gcc -o gateway gateway.c
-
-CMD ["./gateway"]
+CMD ["python", "gateway.py"]
