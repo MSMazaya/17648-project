@@ -85,8 +85,10 @@ Example log output:
 
     [12:00:01] Connected: truck_1 (172.20.0.3)
     [12:00:01] Connected: truck_2 (172.20.0.4)
-    [12:00:03] [truck_1] {...}
-    [12:00:03] [truck_2] {...}
+    [12:00:03] [truck_1] 
+    {...}
+    [12:00:03] [truck_2] 
+    {...}
 
 Vehicle disconnections are also tracked and reflected in the connection table.
 
