@@ -12,7 +12,7 @@
 
 #define SERIAL_LINE_BUF 128
 #define TCP_BUF_SIZE 512
-#define DEFAULT_GATEWAY_HOST "gateway"
+#define DEFAULT_GATEWAY_HOST "localhost"
 #define DEFAULT_GATEWAY_PORT 9010
 #define TCP_BUF_SIZE 512
 
@@ -45,9 +45,10 @@ int connect_to_gateway(const char* host, int port) {
     memcpy(&server_addr.sin_addr, gateway_host->h_addr, gateway_host->h_length);
     server_addr.sin_port = htons(port);
 
-    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+    while (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("Connection to gateway failed");
-        exit(1);
+        sleep(2);
+        /* exit(1); */
     }
 
     return sockfd;
@@ -167,6 +168,7 @@ int main() {
     const char* host = get_env_or_default("GATEWAY_HOST", DEFAULT_GATEWAY_HOST);
     int port = atoi(get_env_or_default("GATEWAY_PORT", "9010"));
 
+    
     int sockfd = connect_to_gateway(host, port);
     send_vehicle_id(sockfd, vehicle_id);
 

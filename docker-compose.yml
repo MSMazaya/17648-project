@@ -1,13 +1,33 @@
-version: '3.8'
-
 services:
+  mqtt:
+    image: eclipse-mosquitto
+    container_name: mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./broker/config:/mosquitto/config:rw
+    restart: unless-stopped
+    networks:
+      - vapi_net
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "health", "-m", "check"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+      
   gateway:
     build: ./gateway
     container_name: gateway
     environment:
       - GATEWAY_PORT=9010
+      - MQTT_BROKER_HOST=mqtt
+      - MQTT_BROKER_PORT=1883
     networks:
       - vapi_net
+    depends_on:
+      mqtt:
+        condition: service_healthy
     tty: true
     stdin_open: true
 
@@ -46,6 +66,19 @@ services:
       - gateway
     networks:
       - vapi_net
+  
+  mqtt_client:
+    build: ./mqtt_client
+    container_name: mqtt_client
+    depends_on:
+      - mqtt
+    environment:
+      - MQTT_BROKER_HOST=mqtt
+      - MQTT_BROKER_PORT=1883
+    networks:
+      - vapi_net
+    stdin_open: true
+    tty: true
 
 networks:
   vapi_net:

@@ -2,5 +2,5 @@
 
 docker compose up --build -d
 
-echo "Attaching to gateway logs (press Ctrl+C to stop)..."
-docker logs -f gateway
+echo "[INFO] Subscribing to all MQTT topics:"
+docker exec -it gateway mosquitto_sub -h mqtt -p 1883 -t '#' -v
