@@ -26,7 +26,7 @@ If running simulation multiple times is needed, one must clean up the docker con
 
     .
     ├── clean.sh              # Cleanup script to remove containers and images
-    ├── docker-compose.yml    # Launches Gateway + multiple VAPI containers
+    ├── docker-compose.yml    # Launches Gateway + multiple VAPI + Broker containers
     ├── run.sh                # Builds and launches the full simulation via Docker Compose
     ├── gateway/
     │   ├── Dockerfile        # Python-based TCP Gateway container
@@ -34,6 +34,10 @@ If running simulation multiple times is needed, one must clean up the docker con
     ├── vapi/
     │   ├── Dockerfile        # VAPI container (TCP client)
     │   └── vapi.c            # Vehicle API implementation
+    ├── broker/
+    │   └── config/
+    │       ├── mosquitto.conf     # Mosquitto configuration file
+    │       └── pwfile             # Password file for authentication (not used, required)
     └── Readme.md             
 
 ---
@@ -90,6 +94,18 @@ Example log output:
     {...}
 
 Vehicle disconnections are also tracked and reflected in the connection table.
+
+---
+
+## MQTT Broker
+
+The system uses Eclipse Mosquitto as the MQTT broker, running as a separate container in `network_mode: host`. It is exposed to the host on port `1883`, allowing external tools or scripts to subscribe to published sensor data.
+
+Example to manually subscribe from host:
+
+    mosquitto_sub -h localhost -t 'vehicles/+/sensor/#' -v
+
+The broker is configured via `mqtt/mosquitto.conf`. Anonymous access is enabled for local testing.
 
 ---
 

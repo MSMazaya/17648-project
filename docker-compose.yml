@@ -66,19 +66,6 @@ services:
       - gateway
     networks:
       - vapi_net
-  
-  mqtt_client:
-    build: ./mqtt_client
-    container_name: mqtt_client
-    depends_on:
-      - mqtt
-    environment:
-      - MQTT_BROKER_HOST=mqtt
-      - MQTT_BROKER_PORT=1883
-    networks:
-      - vapi_net
-    stdin_open: true
-    tty: true
 
 networks:
   vapi_net:
